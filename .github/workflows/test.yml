@@ -4,21 +4,46 @@ on: # rebuild any PRs and main branch changes
   push:
     branches:
       - main
+      - wip
       - 'releases/*'
 
 jobs:
-  build: # make sure build/ci work properly
+  debug:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v2
-      - run: |
-          npm install
-      - run: |
-          npm run all
-  test: # make sure the action works on a clean machine without building
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - uses: ./
-        with:
-          milliseconds: 1000
+      - run: echo $PATH
+
+      - run: convert --version
+
+      - run: which -a convert
+      # - run: |
+      #     sudo apt-get --purge remove imagemagick
+      #     sudo apt autoremove
+      #     sudo apt-get update -qq
+      #     sudo apt-get install -y build-essential checkinstall libgs-dev ghostscript
+      #     mkdir ~/src
+      #     cd ~/src
+      #     wget http://www.imagemagick.org/download/releases/ImageMagick-6.7.7-10.tar.xz
+      #     tar xf ImageMagick-6.7.7-10.tar.xz
+      #     cd ImageMagick-6.7.7-10/
+      #     sudo ./configure --with-gslib=yes
+      #     sudo make
+      #     sudo checkinstall
+      #     sudo ldconfig
+      # - run: convert --version
+  # build: # make sure build/ci work properly
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v2
+  #     - run: |
+  #         npm install
+  #     - run: |
+  #         npm run all
+  # test: # make sure the action works on a clean machine without building
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v2
+  #     - uses: ./
+  #       with:
+  #         milliseconds: 1000
