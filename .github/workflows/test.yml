@@ -8,15 +8,46 @@ on: # rebuild any PRs and main branch changes
       - 'releases/*'
 
 jobs:
-  debug:
+  # debug:
+  #   runs-on: ubuntu-latest
+
+  #   steps:
+  #     - run: echo $PATH
+  #     - run: which -a convert
+  #     - run: convert --version
+
+  # make sure build/ci work properly
+  # build:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v2
+  #     - run: |
+  #         npm install
+  #     # - run: |
+  #     #     npm run build
+  #     #     npm run package
+  #     - run: |
+  #         npm run all
+  test: # make sure the action works on a clean machine without building
     runs-on: ubuntu-latest
-
     steps:
+      - uses: actions/checkout@v2
       - run: echo $PATH
-
+      - run: which -a convert
       - run: convert --version
 
+      - uses: ./
+        with:
+          imagemagick_version: 6.7.7-10
+
+      - run: echo $PATH
       - run: which -a convert
+      - run: convert --version
+
+      - run: apt list --installed | grep gs
+      - run: apt list --installed | grep ghostscript
+
+      - run: ghostscript -v
       # - run: |
       #     sudo apt-get --purge remove imagemagick
       #     sudo apt autoremove
@@ -32,18 +63,3 @@ jobs:
       #     sudo checkinstall
       #     sudo ldconfig
       # - run: convert --version
-  # build: # make sure build/ci work properly
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - uses: actions/checkout@v2
-  #     - run: |
-  #         npm install
-  #     - run: |
-  #         npm run all
-  # test: # make sure the action works on a clean machine without building
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - uses: actions/checkout@v2
-  #     - uses: ./
-  #       with:
-  #         milliseconds: 1000

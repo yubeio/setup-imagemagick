@@ -1,11 +1,15 @@
-name: 'Your name here'
-description: 'Provide a description here'
-author: 'Your name or organization here'
+name: 'Setup ImageMagick compiled from sorce'
+author: 'Gullit Miranda'
+description: |-
+  Download custom dependencies and compile ImageMagick from source to enable the custom dependencies.
+  This will add extra ImageMagick bins to the $PATH
+
 inputs:
-  milliseconds: # change this
+  imagemagick_version: # change this
     required: true
-    description: 'input description here'
-    default: 'default value if applicable'
+    description: 'ImageMagick version'
+    # default: 'default value if applicable'
+
 runs:
   using: 'node12'
   main: 'dist/index.js'
