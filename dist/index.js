@@ -1410,26 +1410,38 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 Object.defineProperty(exports, "__esModule", { value: true });
 const core = __importStar(__webpack_require__(470));
 const toolCache = __importStar(__webpack_require__(533));
-// import {wait} from './wait'
+const exec = __importStar(__webpack_require__(986));
+const os = __importStar(__webpack_require__(87));
+const path = __importStar(__webpack_require__(622));
+const RELEASES_URL = 'http://www.imagemagick.org/download/releases';
 function run() {
     return __awaiter(this, void 0, void 0, function* () {
         checkPlatform();
         try {
-            const imageMagickVersion = core.getInput('imagemagick_version', {
+            const version = core.getInput('version', {
                 required: true
             });
+            const configureArgs = core.getInput('configure_args');
             // debug is only output if you set the secret `ACTIONS_RUNNER_DEBUG` to true
             core.debug(new Date().toTimeString());
             // Download and compile imagemagick if not already present
-            const toolPath = installedPath(imageMagickVersion);
-            core.debug(`toolPath: ${toolPath}`);
-            if (toolPath) {
+            let installDir = installedPath(version);
+            core.debug(`installDir: ${installDir}`);
+            if (installDir) {
                 core.debug('imagemagick already installed');
             }
-            core.info(`Start setup imagemagick v${imageMagickVersion}`);
-            // await wait(parseInt(ms, 10))
+            core.info(`Install imagemagick v${version}`);
             core.debug(new Date().toTimeString());
-            // core.setOutput('time', new Date().toTimeString())
+            yield install(version, configureArgs);
+            core.setOutput('time', new Date().toTimeString());
+            installDir = installedPath(version);
+            core.debug(`installDir: ${installDir}`);
+            if (!installDir) {
+                throw new Error([
+                    `ImageMagick v${version} not found`,
+                    `The list of all available versions can be found in: ${RELEASES_URL}`
+                ].join(os.EOL));
+            }
         }
         catch (error) {
             core.setFailed(error.message);
@@ -1439,9 +1451,55 @@ function run() {
 function installedPath(version) {
     return toolCache.find('imagemagick', version);
 }
+function install(version, configureArgs) {
+    return __awaiter(this, void 0, void 0, function* () {
+        const sourceDir = `ImageMagick-${version}`;
+        const downloadUrl = `${RELEASES_URL}/${sourceDir}.tar.xz`;
+        core.info(`Download from "${downloadUrl}"`);
+        const sourcePath = yield toolCache.downloadTool(downloadUrl);
+        core.startGroup(`Extract downloaded archive`);
+        const sourceExtractedFolder = yield toolCache.extractTar(sourcePath, undefined, 'x');
+        core.debug(`Extracted folder ${sourceExtractedFolder}`);
+        const installRoot = path.join(sourceExtractedFolder, sourceDir);
+        const installDir = yield toolCache.cacheDir(installRoot, 'imagemagick', version);
+        core.endGroup();
+        core.info(`Install with configure args "${configureArgs}"`);
+        yield installImageMagick(installDir, configureArgs);
+    });
+}
+function installImageMagick(installDir, configureArgs) {
+    return __awaiter(this, void 0, void 0, function* () {
+        const options = {
+            cwd: installDir,
+            // silent: true,
+            listeners: {
+                // stdout: (data: Buffer) => {
+                //   core.info(data.toString().trim())
+                // },
+                stderr: (data) => {
+                    core.error(data.toString().trim());
+                }
+            }
+        };
+        core.debug(new Date().toTimeString());
+        core.startGroup(`./configure ${configureArgs}`);
+        yield exec.exec('sudo', ['./configure', ...configureArgs.split(' ')].filter(Boolean), options);
+        core.endGroup();
+        core.debug(new Date().toTimeString());
+        core.startGroup(`make`);
+        yield exec.exec('sudo', ['make'], options);
+        core.endGroup();
+        core.debug(new Date().toTimeString());
+        core.startGroup(`make install`);
+        yield exec.exec('sudo', ['make', 'install'], options);
+        core.endGroup();
+        core.debug(new Date().toTimeString());
+        yield exec.exec('sudo', ['ldconfig'], options);
+    });
+}
 function checkPlatform() {
     if (process.platform !== 'linux')
-        throw new Error('@actions/setup-imagemagick only supports Ubuntu Linux at this time');
+        throw new Error('@gullitmiranda/setup-imagemagick only supports Ubuntu Linux at this time');
 }
 run();
 
