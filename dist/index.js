@@ -1422,19 +1422,18 @@ function run() {
                 required: true
             });
             const configureArgs = core.getInput('configure_args');
-            // debug is only output if you set the secret `ACTIONS_RUNNER_DEBUG` to true
-            core.debug(new Date().toTimeString());
             // Download and compile imagemagick if not already present
             let installDir = installedPath(version);
-            core.debug(`installDir: ${installDir}`);
-            if (installDir) {
+            if (!installDir) {
+                core.info(`Install imagemagick v${version}`);
+                yield install(version, configureArgs);
+                core.setOutput('time', new Date().toTimeString());
+                installDir = installedPath(version);
+            }
+            else {
                 core.debug('imagemagick already installed');
             }
-            core.info(`Install imagemagick v${version}`);
-            core.debug(new Date().toTimeString());
-            yield install(version, configureArgs);
-            core.setOutput('time', new Date().toTimeString());
-            installDir = installedPath(version);
+            // debug is only output if you set the secret `ACTIONS_RUNNER_DEBUG` to true
             core.debug(`installDir: ${installDir}`);
             if (!installDir) {
                 throw new Error([
@@ -1442,6 +1441,7 @@ function run() {
                     `The list of all available versions can be found in: ${RELEASES_URL}`
                 ].join(os.EOL));
             }
+            core.addPath(path.join(installDir, 'bin'));
         }
         catch (error) {
             core.setFailed(error.message);
@@ -1453,24 +1453,23 @@ function installedPath(version) {
 }
 function install(version, configureArgs) {
     return __awaiter(this, void 0, void 0, function* () {
-        const sourceDir = `ImageMagick-${version}`;
-        const downloadUrl = `${RELEASES_URL}/${sourceDir}.tar.xz`;
+        const filename = `ImageMagick-${version}`;
+        const downloadUrl = `${RELEASES_URL}/${filename}.tar.xz`;
         core.info(`Download from "${downloadUrl}"`);
         const sourcePath = yield toolCache.downloadTool(downloadUrl);
         core.startGroup(`Extract downloaded archive`);
         const sourceExtractedFolder = yield toolCache.extractTar(sourcePath, undefined, 'x');
         core.debug(`Extracted folder ${sourceExtractedFolder}`);
-        const installRoot = path.join(sourceExtractedFolder, sourceDir);
-        const installDir = yield toolCache.cacheDir(installRoot, 'imagemagick', version);
+        const sourceRoot = path.join(sourceExtractedFolder, filename);
         core.endGroup();
         core.info(`Install with configure args "${configureArgs}"`);
-        yield installImageMagick(installDir, configureArgs);
+        yield installImageMagick(sourceRoot, version, configureArgs);
     });
 }
-function installImageMagick(installDir, configureArgs) {
+function installImageMagick(sourceDir, version, configureArgs) {
     return __awaiter(this, void 0, void 0, function* () {
         const options = {
-            cwd: installDir,
+            cwd: sourceDir,
             // silent: true,
             listeners: {
                 // stdout: (data: Buffer) => {
@@ -1481,20 +1480,25 @@ function installImageMagick(installDir, configureArgs) {
                 }
             }
         };
-        core.debug(new Date().toTimeString());
+        const precompiledDir = path.resolve('..', 'imagemagick-precompiled');
         core.startGroup(`./configure ${configureArgs}`);
-        yield exec.exec('sudo', ['./configure', ...configureArgs.split(' ')].filter(Boolean), options);
+        yield exec.exec('sudo', [
+            './configure',
+            `--prefix=${precompiledDir}`,
+            ...configureArgs.split(' ')
+        ].filter(Boolean), options);
         core.endGroup();
-        core.debug(new Date().toTimeString());
         core.startGroup(`make`);
         yield exec.exec('sudo', ['make'], options);
         core.endGroup();
-        core.debug(new Date().toTimeString());
         core.startGroup(`make install`);
         yield exec.exec('sudo', ['make', 'install'], options);
         core.endGroup();
-        core.debug(new Date().toTimeString());
+        core.startGroup(`make check`);
+        yield exec.exec('sudo', ['make', 'check'], options);
+        core.endGroup();
         yield exec.exec('sudo', ['ldconfig'], options);
+        yield toolCache.cacheDir(precompiledDir, 'imagemagick', version);
     });
 }
 function checkPlatform() {

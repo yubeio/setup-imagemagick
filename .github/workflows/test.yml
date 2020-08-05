@@ -36,6 +36,8 @@ jobs:
 
       - run: which -a convert
       - run: convert --version
+      - run: identify -list configure
+      - run: identify -list format
       - run: ghostscript -v
 
       - name: Convert a pdf into png

@@ -17,26 +17,22 @@ async function run(): Promise<void> {
     })
     const configureArgs = core.getInput('configure_args')
 
-    // debug is only output if you set the secret `ACTIONS_RUNNER_DEBUG` to true
-    core.debug(new Date().toTimeString())
-
     // Download and compile imagemagick if not already present
     let installDir = installedPath(version)
-    core.debug(`installDir: ${installDir}`)
 
-    if (installDir) {
+    if (!installDir) {
+      core.info(`Install imagemagick v${version}`)
+
+      await install(version, configureArgs)
+
+      core.setOutput('time', new Date().toTimeString())
+
+      installDir = installedPath(version)
+    } else {
       core.debug('imagemagick already installed')
     }
 
-    core.info(`Install imagemagick v${version}`)
-
-    core.debug(new Date().toTimeString())
-
-    await install(version, configureArgs)
-
-    core.setOutput('time', new Date().toTimeString())
-
-    installDir = installedPath(version)
+    // debug is only output if you set the secret `ACTIONS_RUNNER_DEBUG` to true
     core.debug(`installDir: ${installDir}`)
 
     if (!installDir) {
@@ -47,6 +43,8 @@ async function run(): Promise<void> {
         ].join(os.EOL)
       )
     }
+
+    core.addPath(path.join(installDir, 'bin'))
   } catch (error) {
     core.setFailed(error.message)
   }
@@ -57,8 +55,8 @@ function installedPath(version: string): string {
 }
 
 async function install(version: string, configureArgs: string): Promise<void> {
-  const sourceDir = `ImageMagick-${version}`
-  const downloadUrl = `${RELEASES_URL}/${sourceDir}.tar.xz`
+  const filename = `ImageMagick-${version}`
+  const downloadUrl = `${RELEASES_URL}/${filename}.tar.xz`
 
   core.info(`Download from "${downloadUrl}"`)
   const sourcePath = await toolCache.downloadTool(downloadUrl)
@@ -71,24 +69,20 @@ async function install(version: string, configureArgs: string): Promise<void> {
   )
   core.debug(`Extracted folder ${sourceExtractedFolder}`)
 
-  const installRoot = path.join(sourceExtractedFolder, sourceDir)
-  const installDir = await toolCache.cacheDir(
-    installRoot,
-    'imagemagick',
-    version
-  )
+  const sourceRoot = path.join(sourceExtractedFolder, filename)
   core.endGroup()
 
   core.info(`Install with configure args "${configureArgs}"`)
-  await installImageMagick(installDir, configureArgs)
+  await installImageMagick(sourceRoot, version, configureArgs)
 }
 
 async function installImageMagick(
-  installDir: string,
+  sourceDir: string,
+  version: string,
   configureArgs: string
 ): Promise<void> {
   const options: ExecOptions = {
-    cwd: installDir,
+    cwd: sourceDir,
     // silent: true,
     listeners: {
       // stdout: (data: Buffer) => {
@@ -99,32 +93,35 @@ async function installImageMagick(
       }
     }
   }
-
-  core.debug(new Date().toTimeString())
+  const precompiledDir = path.resolve('..', 'imagemagick-precompiled')
 
   core.startGroup(`./configure ${configureArgs}`)
   await exec.exec(
     'sudo',
-    ['./configure', ...configureArgs.split(' ')].filter(Boolean),
+    [
+      './configure',
+      `--prefix=${precompiledDir}`,
+      ...configureArgs.split(' ')
+    ].filter(Boolean),
     options
   )
   core.endGroup()
-
-  core.debug(new Date().toTimeString())
 
   core.startGroup(`make`)
   await exec.exec('sudo', ['make'], options)
   core.endGroup()
 
-  core.debug(new Date().toTimeString())
-
   core.startGroup(`make install`)
   await exec.exec('sudo', ['make', 'install'], options)
   core.endGroup()
 
-  core.debug(new Date().toTimeString())
+  core.startGroup(`make check`)
+  await exec.exec('sudo', ['make', 'check'], options)
+  core.endGroup()
 
   await exec.exec('sudo', ['ldconfig'], options)
+
+  await toolCache.cacheDir(precompiledDir, 'imagemagick', version)
 }
 
 function checkPlatform(): void {
