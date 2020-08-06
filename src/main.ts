@@ -3,6 +3,7 @@ import * as toolCache from '@actions/tool-cache'
 import * as exec from '@actions/exec'
 import * as os from 'os'
 import * as path from 'path'
+import {promises as fs} from 'fs'
 
 import {ExecOptions} from '@actions/exec/lib/interfaces'
 
@@ -16,16 +17,24 @@ async function run(): Promise<void> {
       required: true
     })
     const configureArgs = core.getInput('configure_args')
+    const artifactPath = core.getInput('artifact_path')
+
+    // check if already instaled by another step
+    let installDir: string | undefined = installedPath(version)
+    let usingArtifact = false
+    const artifactName = buildArtifactName(version)
+
+    core.debug(`installDir (cached for another job): ${installDir}`)
+
+    if (!installDir && artifactPath) {
+      installDir = await loadArtifact(artifactPath)
+      usingArtifact = !!installDir
+    }
 
     // Download and compile imagemagick if not already present
-    let installDir = installedPath(version)
-
     if (!installDir) {
       core.info(`Compile imagemagick v${version}`)
-
       installDir = await getAndCompile(version, configureArgs)
-
-      await toolCache.cacheDir(installDir, 'imagemagick', version)
     } else {
       core.debug('imagemagick already installed')
     }
@@ -42,12 +51,14 @@ async function run(): Promise<void> {
       )
     }
 
-    core.exportVariable('artifactName', path.basename(installDir))
+    core.exportVariable('artifactName', artifactName)
     core.exportVariable('artifactDir', installDir)
 
-    core.setOutput('artifactName', path.basename(installDir))
+    core.setOutput('artifactName', artifactName)
     core.setOutput('artifactDir', installDir)
+    core.setOutput('usingArtifact', usingArtifact)
 
+    await toolCache.cacheDir(installDir, 'imagemagick', version)
     core.addPath(path.join(installDir, 'bin'))
   } catch (error) {
     core.setFailed(error.message)
@@ -58,7 +69,7 @@ function installedPath(version: string): string {
   return toolCache.find('imagemagick', version)
 }
 
-function precompiledFilename(version: string): string {
+function buildArtifactName(version: string): string {
   return `ImageMagick-${version}-${os.arch()}-precompiled`
 }
 
@@ -83,12 +94,41 @@ async function getAndCompile(
   const sourceRoot = path.join(sourceExtractedFolder, filename)
   core.endGroup()
 
-  const precompiledDir = path.resolve('..', precompiledFilename(version))
+  const precompiledDir = path.resolve('..', buildArtifactName(version))
 
   core.info(`Install with configure args "${configureArgs}"`)
   await compileImageMagick(sourceRoot, precompiledDir, configureArgs)
 
   return precompiledDir
+}
+
+async function loadArtifact(
+  artifactPath?: string
+): Promise<string | undefined> {
+  if (!artifactPath) return undefined
+
+  artifactPath = path.resolve(artifactPath)
+
+  core.debug(`artifactPath: ${artifactPath}`)
+
+  await exec.exec('pwd')
+  await exec.exec('ls -alh')
+
+  try {
+    await fs.access(artifactPath)
+    const binPath = path.join(artifactPath, 'bin')
+
+    await exec.exec(`ls -alh ${binPath}`)
+    await exec.exec(`chmod -R 755 ${binPath}`)
+    await exec.exec(`ls -alh ${binPath}`)
+    core.debug(`success load artifact directory ${artifactPath}`)
+  } catch (error) {
+    core.debug(`missing artifact directory ${artifactPath}: ${error}`)
+
+    artifactPath = undefined
+  }
+
+  return artifactPath
 }
 
 async function compileImageMagick(
@@ -129,11 +169,19 @@ async function compileImageMagick(
   await exec.exec('sudo', ['make', 'install'], options)
   core.endGroup()
 
-  core.startGroup(`make check`)
-  await exec.exec('sudo', ['make', 'check'], options)
-  core.endGroup()
+  const skipCheck = parseBoolean(core.getInput('skip_check'), false)
+
+  if (!skipCheck) {
+    core.startGroup(`make check`)
+    await exec.exec('sudo', ['make', 'check'], options)
+    core.endGroup()
+  }
 
   await exec.exec('sudo', ['ldconfig'], options)
+}
+
+function parseBoolean(input: string, defaultValue: string | boolean): boolean {
+  return (input || `${defaultValue}`).toLowerCase() === 'true'
 }
 
 function checkPlatform(): void {

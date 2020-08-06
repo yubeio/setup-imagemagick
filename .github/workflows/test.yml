@@ -9,6 +9,9 @@ on:
       - wip
       - 'releases/*'
 
+env:
+  IMAGEMAGICK_VERSION: 7.0.10-25
+
 jobs:
   # make sure build/ci work properly
   build:
@@ -22,18 +25,43 @@ jobs:
       # - run: |
       #     npm run all
 
-  # make sure the action works on a clean machine without building
   compile:
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v2
 
-      - uses: ./
-
+      - id: download_artifact
+        name: Download artifact
+        uses: dawidd6/action-download-artifact@v2
+        continue-on-error: true
         with:
-          version: 7.0.10-25
+          # Optional, GitHub token
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          # Required, workflow file name or ID
+          workflow: test.yml
+          # # Optional, will use the branch
+          # branch: master
+          # # Optional, will get head commit SHA
+          # pr: ${{ github.event.pull_request.number }}
+          # # Optional, no need to specify if PR is
+          # commit: ${{ github.event.pull_request.head.sha }}
+          commit: 8470661aaec07267c0ca658a772599ce519f52d7
+          # Required, uploaded artifact name
+          name: ImageMagick-${{ env.IMAGEMAGICK_VERSION }}-x64-precompiled
+          # Optional, directory where to extract artifact
+          path: ../ImageMagick-${{ env.IMAGEMAGICK_VERSION }}-x64-precompiled
+          # # Optional, defaults to current repo
+          # repo: ${{ github.repository }}
+
+      - id: compiled_source
+        uses: ./
+        with:
+          version: ${{ env.IMAGEMAGICK_VERSION }}
           configure_args: '--with-modules'
           # configure_args: '--with-gslib=yes'
+          skip_check: true
+          artifact_path: ../ImageMagick-${{ env.IMAGEMAGICK_VERSION }}-x64-precompiled
 
       - run: which -a convert
       - run: convert --version
@@ -41,40 +69,12 @@ jobs:
       - run: identify -list format
       - run: ghostscript -v
 
-      - run: |-
-          pwd
-          ls -alh
-
-      - run: env | sort
-
       - uses: actions/upload-artifact@v2
+        # if: ${{ steps.compiled_source.outputs.usingArtifact != 'true' }}
         with:
-          name: ${{ env.artifactName }}
-          path: ${{ env.artifactDir }}
+          name: ${{  steps.compiled_source.outputs.artifactName }}
+          path: ${{  steps.compiled_source.outputs.artifactDir }}
           if-no-files-found: error
 
       - name: Convert a pdf into png
         run: convert -thumbnail 250x250 -background white -alpha remove -flatten ./test/sample.pdf thumbs.png
-
-  release:
-    runs-on: ubuntu-latest
-
-    needs: [compile]
-
-    steps:
-      - uses: actions/checkout@v2
-
-      - run: |-
-          pwd
-          ls -alh
-
-      - run: env | sort
-
-      - name: Dump job context
-        env:
-          JOB_CONTEXT: ${{ toJson(job) }}
-        run: echo "$JOB_CONTEXT"
-      - name: Dump steps context
-        env:
-          STEPS_CONTEXT: ${{ toJson(steps) }}
-        run: echo "$STEPS_CONTEXT"

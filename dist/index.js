@@ -1413,6 +1413,7 @@ const toolCache = __importStar(__webpack_require__(533));
 const exec = __importStar(__webpack_require__(986));
 const os = __importStar(__webpack_require__(87));
 const path = __importStar(__webpack_require__(622));
+const fs_1 = __webpack_require__(747);
 const RELEASES_URL = 'http://www.imagemagick.org/download/releases';
 function run() {
     return __awaiter(this, void 0, void 0, function* () {
@@ -1422,12 +1423,20 @@ function run() {
                 required: true
             });
             const configureArgs = core.getInput('configure_args');
-            // Download and compile imagemagick if not already present
+            const artifactPath = core.getInput('artifact_path');
+            // check if already instaled by another step
             let installDir = installedPath(version);
+            let usingArtifact = false;
+            const artifactName = buildArtifactName(version);
+            core.debug(`installDir (cached for another job): ${installDir}`);
+            if (!installDir && artifactPath) {
+                installDir = yield loadArtifact(artifactPath);
+                usingArtifact = !!installDir;
+            }
+            // Download and compile imagemagick if not already present
             if (!installDir) {
                 core.info(`Compile imagemagick v${version}`);
                 installDir = yield getAndCompile(version, configureArgs);
-                yield toolCache.cacheDir(installDir, 'imagemagick', version);
             }
             else {
                 core.debug('imagemagick already installed');
@@ -1440,10 +1449,12 @@ function run() {
                     `The list of all available versions can be found in: ${RELEASES_URL}`
                 ].join(os.EOL));
             }
-            core.exportVariable('artifactName', path.basename(installDir));
+            core.exportVariable('artifactName', artifactName);
             core.exportVariable('artifactDir', installDir);
-            core.setOutput('artifactName', path.basename(installDir));
+            core.setOutput('artifactName', artifactName);
             core.setOutput('artifactDir', installDir);
+            core.setOutput('usingArtifact', usingArtifact);
+            yield toolCache.cacheDir(installDir, 'imagemagick', version);
             core.addPath(path.join(installDir, 'bin'));
         }
         catch (error) {
@@ -1454,7 +1465,7 @@ function run() {
 function installedPath(version) {
     return toolCache.find('imagemagick', version);
 }
-function precompiledFilename(version) {
+function buildArtifactName(version) {
     return `ImageMagick-${version}-${os.arch()}-precompiled`;
 }
 function getAndCompile(version, configureArgs) {
@@ -1468,10 +1479,33 @@ function getAndCompile(version, configureArgs) {
         core.debug(`Extracted folder ${sourceExtractedFolder}`);
         const sourceRoot = path.join(sourceExtractedFolder, filename);
         core.endGroup();
-        const precompiledDir = path.resolve('..', precompiledFilename(version));
+        const precompiledDir = path.resolve('..', buildArtifactName(version));
         core.info(`Install with configure args "${configureArgs}"`);
         yield compileImageMagick(sourceRoot, precompiledDir, configureArgs);
         return precompiledDir;
+    });
+}
+function loadArtifact(artifactPath) {
+    return __awaiter(this, void 0, void 0, function* () {
+        if (!artifactPath)
+            return undefined;
+        artifactPath = path.resolve(artifactPath);
+        core.debug(`artifactPath: ${artifactPath}`);
+        yield exec.exec('pwd');
+        yield exec.exec('ls -alh');
+        try {
+            yield fs_1.promises.access(artifactPath);
+            const binPath = path.join(artifactPath, 'bin');
+            yield exec.exec(`ls -alh ${binPath}`);
+            yield exec.exec(`chmod -R 755 ${binPath}`);
+            yield exec.exec(`ls -alh ${binPath}`);
+            core.debug(`success load artifact directory ${artifactPath}`);
+        }
+        catch (error) {
+            core.debug(`missing artifact directory ${artifactPath}: ${error}`);
+            artifactPath = undefined;
+        }
+        return artifactPath;
     });
 }
 function compileImageMagick(sourceDir, precompiledDir, configureArgs) {
@@ -1501,11 +1535,17 @@ function compileImageMagick(sourceDir, precompiledDir, configureArgs) {
         core.startGroup(`make install`);
         yield exec.exec('sudo', ['make', 'install'], options);
         core.endGroup();
-        core.startGroup(`make check`);
-        yield exec.exec('sudo', ['make', 'check'], options);
-        core.endGroup();
+        const skipCheck = parseBoolean(core.getInput('skip_check'), false);
+        if (!skipCheck) {
+            core.startGroup(`make check`);
+            yield exec.exec('sudo', ['make', 'check'], options);
+            core.endGroup();
+        }
         yield exec.exec('sudo', ['ldconfig'], options);
     });
+}
+function parseBoolean(input, defaultValue) {
+    return (input || `${defaultValue}`).toLowerCase() === 'true';
 }
 function checkPlatform() {
     if (process.platform !== 'linux')

@@ -15,6 +15,16 @@ inputs:
     description: 'Extra arguments to ./configure command'
     default: '--with-gslib=yes'
 
+  artifact_path:
+    required: false
+    description: 'Path of the extracted artifact'
+    # default: 'false'
+
+  skip_check:
+    required: false
+    description: 'Skip `make check` after compilation'
+    default: 'false'
+
 runs:
   using: 'node12'
   main: 'dist/index.js'
