@@ -1,0 +1,96 @@
+name: 'build and release'
+
+on:
+  push:
+    # Sequence of patterns matched against refs/tags
+    tags:
+      # Push events to matching v*, i.e. v1.0, v20.15.10
+      - 'v*'
+
+jobs:
+  # make sure build/ci work properly
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+      - run: |
+          npm install
+      - run: |
+          npm run build && npm run format && npm run lint && npm run package
+      # - run: |
+      #     npm run all
+
+  compile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+
+      - uses: ./
+
+        with:
+          version: 7.0.10-25
+          configure_args: '--with-modules'
+          # configure_args: '--with-gslib=yes'
+
+      - run: which -a convert
+      - run: convert --version
+      - run: identify -list configure
+      - run: identify -list format
+      - run: ghostscript -v
+
+      - run: |-
+          pwd
+          ls -alh
+
+      - run: env | sort
+
+      - name: Convert a pdf into png
+        run: convert -thumbnail 250x250 -background white -alpha remove -flatten ./test/sample.pdf thumbs.png
+
+      - uses: actions/upload-artifact@v2
+        with:
+          name: ${{ env.ARTIFACT_NAME }}
+          path: ${{ env.ARTIFACT_DIR }}
+          if-no-files-found: error
+
+      - name: Create tar file
+        run: |-
+          tar -czvf ${{ env.ARTIFACT_NAME }}.tar.gz ${{ env.ARTIFACT_DIR }}
+
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
+          draft: false
+          prerelease: false
+
+      - name: Upload Release Asset
+        id: upload-release-asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          # This pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, which include a `upload_url`. See this blog post for more info: https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./${{ env.ARTIFACT_NAME }}.tar.gz
+          asset_name: ${{ env.ARTIFACT_NAME }}.tar.gz
+          asset_content_type: application/gzip
+
+  release:
+    runs-on: ubuntu-latest
+
+    needs: [compile]
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - run: |-
+          pwd
+          ls -alh
+
+      - run: env | sort

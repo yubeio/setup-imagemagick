@@ -21,13 +21,11 @@ async function run(): Promise<void> {
     let installDir = installedPath(version)
 
     if (!installDir) {
-      core.info(`Install imagemagick v${version}`)
+      core.info(`Compile imagemagick v${version}`)
 
-      await install(version, configureArgs)
+      installDir = await getAndCompile(version, configureArgs)
 
-      core.setOutput('time', new Date().toTimeString())
-
-      installDir = installedPath(version)
+      await toolCache.cacheDir(installDir, 'imagemagick', version)
     } else {
       core.debug('imagemagick already installed')
     }
@@ -44,8 +42,11 @@ async function run(): Promise<void> {
       )
     }
 
-    core.exportVariable('artifactName', `ImageMagick-${version}-${os.arch()}`)
+    core.exportVariable('artifactName', path.basename(installDir))
     core.exportVariable('artifactDir', installDir)
+
+    core.setOutput('artifactName', path.basename(installDir))
+    core.setOutput('artifactDir', installDir)
 
     core.addPath(path.join(installDir, 'bin'))
   } catch (error) {
@@ -57,7 +58,14 @@ function installedPath(version: string): string {
   return toolCache.find('imagemagick', version)
 }
 
-async function install(version: string, configureArgs: string): Promise<void> {
+function precompiledFilename(version: string): string {
+  return `ImageMagick-${version}-${os.arch()}-precompiled`
+}
+
+async function getAndCompile(
+  version: string,
+  configureArgs: string
+): Promise<string> {
   const filename = `ImageMagick-${version}`
   const downloadUrl = `${RELEASES_URL}/${filename}.tar.xz`
 
@@ -75,13 +83,17 @@ async function install(version: string, configureArgs: string): Promise<void> {
   const sourceRoot = path.join(sourceExtractedFolder, filename)
   core.endGroup()
 
+  const precompiledDir = path.resolve('..', precompiledFilename(version))
+
   core.info(`Install with configure args "${configureArgs}"`)
-  await installImageMagick(sourceRoot, version, configureArgs)
+  await compileImageMagick(sourceRoot, precompiledDir, configureArgs)
+
+  return precompiledDir
 }
 
-async function installImageMagick(
+async function compileImageMagick(
   sourceDir: string,
-  version: string,
+  precompiledDir: string,
   configureArgs: string
 ): Promise<void> {
   const options: ExecOptions = {
@@ -96,7 +108,6 @@ async function installImageMagick(
       }
     }
   }
-  const precompiledDir = path.resolve('..', 'imagemagick-precompiled')
 
   core.startGroup(`./configure ${configureArgs}`)
   await exec.exec(
@@ -123,8 +134,6 @@ async function installImageMagick(
   core.endGroup()
 
   await exec.exec('sudo', ['ldconfig'], options)
-
-  await toolCache.cacheDir(precompiledDir, 'imagemagick', version)
 }
 
 function checkPlatform(): void {

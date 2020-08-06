@@ -1425,10 +1425,9 @@ function run() {
             // Download and compile imagemagick if not already present
             let installDir = installedPath(version);
             if (!installDir) {
-                core.info(`Install imagemagick v${version}`);
-                yield install(version, configureArgs);
-                core.setOutput('time', new Date().toTimeString());
-                installDir = installedPath(version);
+                core.info(`Compile imagemagick v${version}`);
+                installDir = yield getAndCompile(version, configureArgs);
+                yield toolCache.cacheDir(installDir, 'imagemagick', version);
             }
             else {
                 core.debug('imagemagick already installed');
@@ -1441,8 +1440,10 @@ function run() {
                     `The list of all available versions can be found in: ${RELEASES_URL}`
                 ].join(os.EOL));
             }
-            core.exportVariable('artifactName', `ImageMagick-${version}-${os.arch()}`);
+            core.exportVariable('artifactName', path.basename(installDir));
             core.exportVariable('artifactDir', installDir);
+            core.setOutput('artifactName', path.basename(installDir));
+            core.setOutput('artifactDir', installDir);
             core.addPath(path.join(installDir, 'bin'));
         }
         catch (error) {
@@ -1453,7 +1454,10 @@ function run() {
 function installedPath(version) {
     return toolCache.find('imagemagick', version);
 }
-function install(version, configureArgs) {
+function precompiledFilename(version) {
+    return `ImageMagick-${version}-${os.arch()}-precompiled`;
+}
+function getAndCompile(version, configureArgs) {
     return __awaiter(this, void 0, void 0, function* () {
         const filename = `ImageMagick-${version}`;
         const downloadUrl = `${RELEASES_URL}/${filename}.tar.xz`;
@@ -1464,11 +1468,13 @@ function install(version, configureArgs) {
         core.debug(`Extracted folder ${sourceExtractedFolder}`);
         const sourceRoot = path.join(sourceExtractedFolder, filename);
         core.endGroup();
+        const precompiledDir = path.resolve('..', precompiledFilename(version));
         core.info(`Install with configure args "${configureArgs}"`);
-        yield installImageMagick(sourceRoot, version, configureArgs);
+        yield compileImageMagick(sourceRoot, precompiledDir, configureArgs);
+        return precompiledDir;
     });
 }
-function installImageMagick(sourceDir, version, configureArgs) {
+function compileImageMagick(sourceDir, precompiledDir, configureArgs) {
     return __awaiter(this, void 0, void 0, function* () {
         const options = {
             cwd: sourceDir,
@@ -1482,7 +1488,6 @@ function installImageMagick(sourceDir, version, configureArgs) {
                 }
             }
         };
-        const precompiledDir = path.resolve('..', 'imagemagick-precompiled');
         core.startGroup(`./configure ${configureArgs}`);
         yield exec.exec('sudo', [
             './configure',
@@ -1500,7 +1505,6 @@ function installImageMagick(sourceDir, version, configureArgs) {
         yield exec.exec('sudo', ['make', 'check'], options);
         core.endGroup();
         yield exec.exec('sudo', ['ldconfig'], options);
-        yield toolCache.cacheDir(precompiledDir, 'imagemagick', version);
     });
 }
 function checkPlatform() {
