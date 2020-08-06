@@ -79,8 +79,16 @@ jobs:
 
       - name: Create tar file
         run: |-
-          echo $(pwd)/${{ steps.compiled_source.outputs.artifactName }}.tar.gz
-          tar -czvf ${{ steps.compiled_source.outputs.artifactName }}.tar.gz ${{ steps.compiled_source.outputs.artifactDir }}
+          artifactName=${{ steps.compiled_source.outputs.artifactName }}
+          artifactDir=${{ steps.compiled_source.outputs.artifactDir }}
+
+          echo $(pwd)/${artifactName}.tar.gz
+
+          tar \
+            -C "$(dirname "$artifactDir")" \
+            -czvf ${artifactName}.tar.gz \
+            "$(basename "$artifactDir")"
+
           ls -alh .
 
       - name: Create Release
@@ -91,7 +99,7 @@ jobs:
         with:
           tag_name: ${{ github.ref }}
           release_name: Release ${{ github.ref }}
-          draft: true
+          draft: false
           prerelease: true
 
       - name: Upload Release Asset
