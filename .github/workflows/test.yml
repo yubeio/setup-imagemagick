@@ -23,12 +23,13 @@ jobs:
       #     npm run all
 
   # make sure the action works on a clean machine without building
-  test:
+  compile:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
 
       - uses: ./
+
         with:
           version: 7.0.10-25
           configure_args: '--with-modules'
@@ -40,5 +41,28 @@ jobs:
       - run: identify -list format
       - run: ghostscript -v
 
+      - run: |-
+          pwd
+          ls -alh
+
+      - run: env | sort
+
+      - uses: actions/upload-artifact@v2
+        with:
+          name: ${{ env.ARTIFACT_NAME }}
+          path: ${{ env.ARTIFACT_DIR }}
+
       - name: Convert a pdf into png
         run: convert -thumbnail 250x250 -background white -alpha remove -flatten ./test/sample.pdf thumbs.png
+
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - run: |-
+          pwd
+          ls -alh
+
+      - run: env | sort

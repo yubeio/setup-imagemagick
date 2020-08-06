@@ -1441,6 +1441,8 @@ function run() {
                     `The list of all available versions can be found in: ${RELEASES_URL}`
                 ].join(os.EOL));
             }
+            core.exportVariable('artifactName', `ImageMagick-${version}-${os.arch()}`);
+            core.exportVariable('artifactDir', installDir);
             core.addPath(path.join(installDir, 'bin'));
         }
         catch (error) {

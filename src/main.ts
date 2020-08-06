@@ -44,6 +44,9 @@ async function run(): Promise<void> {
       )
     }
 
+    core.exportVariable('artifactName', `ImageMagick-${version}-${os.arch()}`)
+    core.exportVariable('artifactDir', installDir)
+
     core.addPath(path.join(installDir, 'bin'))
   } catch (error) {
     core.setFailed(error.message)
