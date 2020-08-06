@@ -79,7 +79,9 @@ jobs:
 
       - name: Create tar file
         run: |-
+          echo $(pwd)/${{ steps.compiled_source.outputs.artifactName }}.tar.gz
           tar -czvf ${{ steps.compiled_source.outputs.artifactName }}.tar.gz ${{ steps.compiled_source.outputs.artifactDir }}
+          ls -alh .
 
       - name: Create Release
         id: create_release
@@ -89,8 +91,8 @@ jobs:
         with:
           tag_name: ${{ github.ref }}
           release_name: Release ${{ github.ref }}
-          draft: false
-          prerelease: false
+          draft: true
+          prerelease: true
 
       - name: Upload Release Asset
         id: upload-release-asset
@@ -101,5 +103,5 @@ jobs:
           # This pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, which include a `upload_url`. See this blog post for more info: https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps
           upload_url: ${{ steps.create_release.outputs.upload_url }}
           asset_name: ${{ steps.compiled_source.outputs.artifactName }}.tar.gz
-          asset_path: ${{ steps.compiled_source.outputs.artifactDir }}.tar.gz
+          asset_path: ./${{ steps.compiled_source.outputs.artifactName }}.tar.gz
           asset_content_type: application/gzip
