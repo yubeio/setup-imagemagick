@@ -1414,7 +1414,8 @@ const exec = __importStar(__webpack_require__(986));
 const os = __importStar(__webpack_require__(87));
 const path = __importStar(__webpack_require__(622));
 const fs_1 = __webpack_require__(747);
-const RELEASES_URL = 'http://www.imagemagick.org/download/releases';
+const SOURCE_RELEASES_URL = 'http://www.imagemagick.org/download/releases';
+const GITHUB_RELEASES_URL = 'https://github.com/gullitmiranda/setup-imagemagick/releases';
 function run() {
     return __awaiter(this, void 0, void 0, function* () {
         checkPlatform();
@@ -1424,29 +1425,43 @@ function run() {
             });
             const configureArgs = core.getInput('configure_args');
             const artifactPath = core.getInput('artifact_path');
+            const releaseTag = core.getInput('release_tag');
+            const compileFallback = parseBoolean(core.getInput('compile_fallback'), false);
             // check if already instaled by another step
             let installDir = installedPath(version);
             let usingArtifact = false;
             const artifactName = buildArtifactName(version);
+            // debug is only output if you set the secret `ACTIONS_RUNNER_DEBUG` to true
             core.debug(`installDir (cached for another job): ${installDir}`);
+            if (!installDir && releaseTag) {
+                installDir = yield getFromRelease(releaseTag, version);
+            }
             if (!installDir && artifactPath) {
                 installDir = yield loadArtifact(artifactPath);
                 usingArtifact = !!installDir;
             }
-            // Download and compile imagemagick if not already present
+            if (!installDir && !compileFallback) {
+                const from = [
+                    releaseTag && 'release_tag',
+                    artifactPath && 'artifact_path'
+                ]
+                    .filter(Boolean)
+                    .join(' or ');
+                throw Error(`Fail to get precompiled file from ${from}, and the compile_fallback option is disabled`);
+            }
             if (!installDir) {
+                // Download and compile imagemagick if not already present
                 core.info(`Compile imagemagick v${version}`);
                 installDir = yield getAndCompile(version, configureArgs);
             }
             else {
                 core.debug('imagemagick already installed');
             }
-            // debug is only output if you set the secret `ACTIONS_RUNNER_DEBUG` to true
             core.debug(`installDir: ${installDir}`);
             if (!installDir) {
                 throw new Error([
                     `ImageMagick v${version} not found`,
-                    `The list of all available versions can be found in: ${RELEASES_URL}`
+                    `The list of all available versions can be found in: ${SOURCE_RELEASES_URL}`
                 ].join(os.EOL));
             }
             core.exportVariable('artifactName', artifactName);
@@ -1468,10 +1483,32 @@ function installedPath(version) {
 function buildArtifactName(version) {
     return `ImageMagick-${version}-${os.arch()}-precompiled`;
 }
+function getFromRelease(releaseTag, version) {
+    return __awaiter(this, void 0, void 0, function* () {
+        const filename = buildArtifactName(version);
+        const downloadUrl = `${GITHUB_RELEASES_URL}/download/${releaseTag}/${filename}.tar.gz`;
+        let installDir;
+        let downloadedFile;
+        try {
+            core.info(`Download from "${downloadUrl}"`);
+            downloadedFile = yield toolCache.downloadTool(downloadUrl);
+        }
+        catch (error) {
+            core.error(`fail to get artifact ${filename} from release ${releaseTag}. See all available releases and versions in ${GITHUB_RELEASES_URL}`);
+            core.debug(error);
+        }
+        if (downloadedFile) {
+            core.startGroup(`Extract downloaded archive`);
+            installDir = yield toolCache.extractTar(downloadedFile, undefined, 'zx');
+            core.debug(`Extracted folder ${installDir}`);
+        }
+        return installDir;
+    });
+}
 function getAndCompile(version, configureArgs) {
     return __awaiter(this, void 0, void 0, function* () {
         const filename = `ImageMagick-${version}`;
-        const downloadUrl = `${RELEASES_URL}/${filename}.tar.xz`;
+        const downloadUrl = `${SOURCE_RELEASES_URL}/${filename}.tar.xz`;
         core.info(`Download from "${downloadUrl}"`);
         const sourcePath = yield toolCache.downloadTool(downloadUrl);
         core.startGroup(`Extract downloaded archive`);

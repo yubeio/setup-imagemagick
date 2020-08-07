@@ -7,7 +7,9 @@ import {promises as fs} from 'fs'
 
 import {ExecOptions} from '@actions/exec/lib/interfaces'
 
-const RELEASES_URL = 'http://www.imagemagick.org/download/releases'
+const SOURCE_RELEASES_URL = 'http://www.imagemagick.org/download/releases'
+const GITHUB_RELEASES_URL =
+  'https://github.com/gullitmiranda/setup-imagemagick/releases'
 
 async function run(): Promise<void> {
   checkPlatform()
@@ -18,35 +20,57 @@ async function run(): Promise<void> {
     })
     const configureArgs = core.getInput('configure_args')
     const artifactPath = core.getInput('artifact_path')
+    const releaseTag = core.getInput('release_tag')
+    const compileFallback = parseBoolean(
+      core.getInput('compile_fallback'),
+      false
+    )
 
     // check if already instaled by another step
     let installDir: string | undefined = installedPath(version)
     let usingArtifact = false
     const artifactName = buildArtifactName(version)
 
+    // debug is only output if you set the secret `ACTIONS_RUNNER_DEBUG` to true
     core.debug(`installDir (cached for another job): ${installDir}`)
+
+    if (!installDir && releaseTag) {
+      installDir = await getFromRelease(releaseTag, version)
+    }
 
     if (!installDir && artifactPath) {
       installDir = await loadArtifact(artifactPath)
       usingArtifact = !!installDir
     }
 
-    // Download and compile imagemagick if not already present
+    if (!installDir && !compileFallback) {
+      const from = [
+        releaseTag && 'release_tag',
+        artifactPath && 'artifact_path'
+      ]
+        .filter(Boolean)
+        .join(' or ')
+
+      throw Error(
+        `Fail to get precompiled file from ${from}, and the compile_fallback option is disabled`
+      )
+    }
+
     if (!installDir) {
+      // Download and compile imagemagick if not already present
       core.info(`Compile imagemagick v${version}`)
       installDir = await getAndCompile(version, configureArgs)
     } else {
       core.debug('imagemagick already installed')
     }
 
-    // debug is only output if you set the secret `ACTIONS_RUNNER_DEBUG` to true
     core.debug(`installDir: ${installDir}`)
 
     if (!installDir) {
       throw new Error(
         [
           `ImageMagick v${version} not found`,
-          `The list of all available versions can be found in: ${RELEASES_URL}`
+          `The list of all available versions can be found in: ${SOURCE_RELEASES_URL}`
         ].join(os.EOL)
       )
     }
@@ -73,12 +97,40 @@ function buildArtifactName(version: string): string {
   return `ImageMagick-${version}-${os.arch()}-precompiled`
 }
 
+async function getFromRelease(
+  releaseTag: string,
+  version: string
+): Promise<string | undefined> {
+  const filename = buildArtifactName(version)
+  const downloadUrl = `${GITHUB_RELEASES_URL}/download/${releaseTag}/${filename}.tar.gz`
+  let installDir
+  let downloadedFile
+
+  try {
+    core.info(`Download from "${downloadUrl}"`)
+    downloadedFile = await toolCache.downloadTool(downloadUrl)
+  } catch (error) {
+    core.error(
+      `fail to get artifact ${filename} from release ${releaseTag}. See all available releases and versions in ${GITHUB_RELEASES_URL}`
+    )
+    core.debug(error)
+  }
+
+  if (downloadedFile) {
+    core.startGroup(`Extract downloaded archive`)
+    installDir = await toolCache.extractTar(downloadedFile, undefined, 'zx')
+    core.debug(`Extracted folder ${installDir}`)
+  }
+
+  return installDir
+}
+
 async function getAndCompile(
   version: string,
   configureArgs: string
 ): Promise<string> {
   const filename = `ImageMagick-${version}`
-  const downloadUrl = `${RELEASES_URL}/${filename}.tar.xz`
+  const downloadUrl = `${SOURCE_RELEASES_URL}/${filename}.tar.xz`
 
   core.info(`Download from "${downloadUrl}"`)
   const sourcePath = await toolCache.downloadTool(downloadUrl)
