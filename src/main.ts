@@ -25,13 +25,18 @@ async function run(): Promise<void> {
       core.getInput('compile_fallback'),
       false
     )
+    const skipCache = parseBoolean(core.getInput('skip_cache'), false)
+
+    const artifactName = buildArtifactName(version)
+    let installDir: string | undefined
 
     // check if already instaled by another step
-    let installDir: string | undefined = installedPath(version)
-    const artifactName = buildArtifactName(version)
+    if (!skipCache) {
+      installDir = installedPath(version)
 
-    // debug is only output if you set the secret `ACTIONS_RUNNER_DEBUG` to true
-    core.debug(`installDir (cached for another job): ${installDir}`)
+      // debug is only output if you set the secret `ACTIONS_RUNNER_DEBUG` to true
+      core.debug(`installDir (cached for another job): ${installDir}`)
+    }
 
     if (!installDir && releaseTag) {
       installDir = await getFromRelease(releaseTag, version)
@@ -58,8 +63,6 @@ async function run(): Promise<void> {
       // Download and compile imagemagick if not already present
       core.info(`Compile imagemagick v${version}`)
       installDir = await getAndCompile(version, configureArgs)
-    } else {
-      core.debug('imagemagick already installed')
     }
 
     core.debug(`installDir: ${installDir}`)
@@ -75,6 +78,17 @@ async function run(): Promise<void> {
 
     core.setOutput('artifactName', artifactName)
     core.setOutput('artifactDir', installDir)
+
+    await exec.exec('sudo', ['ldconfig', path.resolve(installDir, 'lib')], {
+      listeners: {
+        // stdout: (data: Buffer) => {
+        //   core.info(data.toString().trim())
+        // },
+        stderr: (data: Buffer) => {
+          core.error(data.toString().trim())
+        }
+      }
+    })
 
     await toolCache.cacheDir(installDir, 'imagemagick', version)
     core.addPath(path.join(installDir, 'bin'))
@@ -120,38 +134,15 @@ async function getFromRelease(
     core.endGroup()
     core.debug(`Extracted folder ${extractedFolder}`)
     installDir = path.join(extractedFolder, filename)
+
+    const binPath = path.join(installDir, 'bin')
+
+    await exec.exec(`ls -alh ${binPath}`)
+    await exec.exec(`chmod -R 755 ${binPath}`)
+    await exec.exec(`ls -alh ${binPath}`)
   }
 
   return installDir
-}
-
-async function getAndCompile(
-  version: string,
-  configureArgs: string
-): Promise<string> {
-  const filename = `ImageMagick-${version}`
-  const downloadUrl = `${SOURCE_RELEASES_URL}/${filename}.tar.xz`
-
-  core.info(`Download from "${downloadUrl}"`)
-  const sourcePath = await toolCache.downloadTool(downloadUrl)
-
-  core.startGroup(`Extract downloaded archive`)
-  const sourceExtractedFolder = await toolCache.extractTar(
-    sourcePath,
-    undefined,
-    'x'
-  )
-  core.endGroup()
-  core.debug(`Extracted folder ${sourceExtractedFolder}`)
-
-  const sourceRoot = path.join(sourceExtractedFolder, filename)
-
-  const precompiledDir = path.resolve('..', buildArtifactName(version))
-
-  core.info(`Install with configure args "${configureArgs}"`)
-  await compileImageMagick(sourceRoot, precompiledDir, configureArgs)
-
-  return precompiledDir
 }
 
 async function loadArtifact(
@@ -181,6 +172,35 @@ async function loadArtifact(
   }
 
   return artifactPath
+}
+
+async function getAndCompile(
+  version: string,
+  configureArgs: string
+): Promise<string> {
+  const filename = `ImageMagick-${version}`
+  const downloadUrl = `${SOURCE_RELEASES_URL}/${filename}.tar.xz`
+
+  core.info(`Download from "${downloadUrl}"`)
+  const sourcePath = await toolCache.downloadTool(downloadUrl)
+
+  core.startGroup(`Extract downloaded archive`)
+  const sourceExtractedFolder = await toolCache.extractTar(
+    sourcePath,
+    undefined,
+    'x'
+  )
+  core.endGroup()
+  core.debug(`Extracted folder ${sourceExtractedFolder}`)
+
+  const sourceRoot = path.join(sourceExtractedFolder, filename)
+
+  const precompiledDir = path.resolve('..', buildArtifactName(version))
+
+  core.info(`Install with configure args "${configureArgs}"`)
+  await compileImageMagick(sourceRoot, precompiledDir, configureArgs)
+
+  return precompiledDir
 }
 
 async function compileImageMagick(
@@ -228,8 +248,6 @@ async function compileImageMagick(
     await exec.exec('sudo', ['make', 'check'], options)
     core.endGroup()
   }
-
-  await exec.exec('sudo', ['ldconfig'], options)
 }
 
 function parseBoolean(input: string, defaultValue: string | boolean): boolean {

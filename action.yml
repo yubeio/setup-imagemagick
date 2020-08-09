@@ -34,6 +34,11 @@ inputs:
     description: 'Skip `make check` after compilation'
     default: 'false'
 
+  skip_cache:
+    required: false
+    description: 'Skip cache from another steps'
+    default: 'false'
+
 runs:
   using: 'node12'
   main: 'dist/index.js'
