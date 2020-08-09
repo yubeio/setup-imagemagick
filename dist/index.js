@@ -1429,7 +1429,6 @@ function run() {
             const compileFallback = parseBoolean(core.getInput('compile_fallback'), false);
             // check if already instaled by another step
             let installDir = installedPath(version);
-            let usingArtifact = false;
             const artifactName = buildArtifactName(version);
             // debug is only output if you set the secret `ACTIONS_RUNNER_DEBUG` to true
             core.debug(`installDir (cached for another job): ${installDir}`);
@@ -1438,7 +1437,6 @@ function run() {
             }
             if (!installDir && artifactPath) {
                 installDir = yield loadArtifact(artifactPath);
-                usingArtifact = !!installDir;
             }
             if (!installDir && !compileFallback) {
                 const from = [
@@ -1464,11 +1462,8 @@ function run() {
                     `The list of all available versions can be found in: ${SOURCE_RELEASES_URL}`
                 ].join(os.EOL));
             }
-            core.exportVariable('artifactName', artifactName);
-            core.exportVariable('artifactDir', installDir);
             core.setOutput('artifactName', artifactName);
             core.setOutput('artifactDir', installDir);
-            core.setOutput('usingArtifact', usingArtifact);
             yield toolCache.cacheDir(installDir, 'imagemagick', version);
             core.addPath(path.join(installDir, 'bin'));
         }
@@ -1499,8 +1494,10 @@ function getFromRelease(releaseTag, version) {
         }
         if (downloadedFile) {
             core.startGroup(`Extract downloaded archive`);
-            installDir = yield toolCache.extractTar(downloadedFile, undefined, 'zx');
-            core.debug(`Extracted folder ${installDir}`);
+            const extractedFolder = yield toolCache.extractTar(downloadedFile, undefined, 'zx');
+            core.endGroup();
+            core.debug(`Extracted folder ${extractedFolder}`);
+            installDir = path.join(extractedFolder, filename);
         }
         return installDir;
     });
@@ -1513,9 +1510,9 @@ function getAndCompile(version, configureArgs) {
         const sourcePath = yield toolCache.downloadTool(downloadUrl);
         core.startGroup(`Extract downloaded archive`);
         const sourceExtractedFolder = yield toolCache.extractTar(sourcePath, undefined, 'x');
+        core.endGroup();
         core.debug(`Extracted folder ${sourceExtractedFolder}`);
         const sourceRoot = path.join(sourceExtractedFolder, filename);
-        core.endGroup();
         const precompiledDir = path.resolve('..', buildArtifactName(version));
         core.info(`Install with configure args "${configureArgs}"`);
         yield compileImageMagick(sourceRoot, precompiledDir, configureArgs);

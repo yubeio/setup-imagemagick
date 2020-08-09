@@ -28,7 +28,6 @@ async function run(): Promise<void> {
 
     // check if already instaled by another step
     let installDir: string | undefined = installedPath(version)
-    let usingArtifact = false
     const artifactName = buildArtifactName(version)
 
     // debug is only output if you set the secret `ACTIONS_RUNNER_DEBUG` to true
@@ -40,7 +39,6 @@ async function run(): Promise<void> {
 
     if (!installDir && artifactPath) {
       installDir = await loadArtifact(artifactPath)
-      usingArtifact = !!installDir
     }
 
     if (!installDir && !compileFallback) {
@@ -75,12 +73,8 @@ async function run(): Promise<void> {
       )
     }
 
-    core.exportVariable('artifactName', artifactName)
-    core.exportVariable('artifactDir', installDir)
-
     core.setOutput('artifactName', artifactName)
     core.setOutput('artifactDir', installDir)
-    core.setOutput('usingArtifact', usingArtifact)
 
     await toolCache.cacheDir(installDir, 'imagemagick', version)
     core.addPath(path.join(installDir, 'bin'))
@@ -118,8 +112,14 @@ async function getFromRelease(
 
   if (downloadedFile) {
     core.startGroup(`Extract downloaded archive`)
-    installDir = await toolCache.extractTar(downloadedFile, undefined, 'zx')
-    core.debug(`Extracted folder ${installDir}`)
+    const extractedFolder = await toolCache.extractTar(
+      downloadedFile,
+      undefined,
+      'zx'
+    )
+    core.endGroup()
+    core.debug(`Extracted folder ${extractedFolder}`)
+    installDir = path.join(extractedFolder, filename)
   }
 
   return installDir
@@ -141,10 +141,10 @@ async function getAndCompile(
     undefined,
     'x'
   )
+  core.endGroup()
   core.debug(`Extracted folder ${sourceExtractedFolder}`)
 
   const sourceRoot = path.join(sourceExtractedFolder, filename)
-  core.endGroup()
 
   const precompiledDir = path.resolve('..', buildArtifactName(version))
 

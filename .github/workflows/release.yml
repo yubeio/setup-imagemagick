@@ -68,7 +68,6 @@ jobs:
       - run: ghostscript -v
 
       - uses: actions/upload-artifact@v2
-        # if: ${{ steps.compiled_source.outputs.usingArtifact != 'true' }}
         with:
           name: ${{ steps.compiled_source.outputs.artifactName }}
           path: ${{ steps.compiled_source.outputs.artifactDir }}
