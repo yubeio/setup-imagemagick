@@ -112,3 +112,28 @@ jobs:
           asset_name: ${{ steps.compiled_source.outputs.artifactName }}.tar.gz
           asset_path: ./${{ steps.compiled_source.outputs.artifactName }}.tar.gz
           asset_content_type: application/gzip
+
+  test_release:
+    runs-on: ubuntu-latest
+
+    needs: [compile]
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - uses: olegtarasov/get-tag@v2
+        id: tagName
+
+      - uses: gullitmiranda/setup-imagemagick@v0
+        with:
+          version: ${{ env.IMAGEMAGICK_VERSION }}
+          release_tag: ${{ steps.tagName.outputs.tag }}
+
+      - run: which -a convert
+      - run: convert --version
+      - run: identify -list configure
+      - run: identify -list format
+      - run: ghostscript -v
+
+      - name: Convert a pdf into png
+        run: convert -thumbnail 250x250 -background white -alpha remove -flatten ./test/sample.pdf thumbs.png
