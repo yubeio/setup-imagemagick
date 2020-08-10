@@ -137,9 +137,7 @@ async function getFromRelease(
 
     const binPath = path.join(installDir, 'bin')
 
-    await exec.exec(`ls -alh ${binPath}`)
     await exec.exec(`chmod -R 755 ${binPath}`)
-    await exec.exec(`ls -alh ${binPath}`)
   }
 
   return installDir
@@ -154,16 +152,11 @@ async function loadArtifact(
 
   core.debug(`artifactPath: ${artifactPath}`)
 
-  await exec.exec('pwd')
-  await exec.exec('ls -alh')
-
   try {
     await fs.access(artifactPath)
     const binPath = path.join(artifactPath, 'bin')
 
-    await exec.exec(`ls -alh ${binPath}`)
     await exec.exec(`chmod -R 755 ${binPath}`)
-    await exec.exec(`ls -alh ${binPath}`)
     core.debug(`success load artifact directory ${artifactPath}`)
   } catch (error) {
     core.debug(`missing artifact directory ${artifactPath}: ${error}`)

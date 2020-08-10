@@ -1510,9 +1510,7 @@ function getFromRelease(releaseTag, version) {
             core.debug(`Extracted folder ${extractedFolder}`);
             installDir = path.join(extractedFolder, filename);
             const binPath = path.join(installDir, 'bin');
-            yield exec.exec(`ls -alh ${binPath}`);
             yield exec.exec(`chmod -R 755 ${binPath}`);
-            yield exec.exec(`ls -alh ${binPath}`);
         }
         return installDir;
     });
@@ -1523,14 +1521,10 @@ function loadArtifact(artifactPath) {
             return undefined;
         artifactPath = path.resolve(artifactPath);
         core.debug(`artifactPath: ${artifactPath}`);
-        yield exec.exec('pwd');
-        yield exec.exec('ls -alh');
         try {
             yield fs_1.promises.access(artifactPath);
             const binPath = path.join(artifactPath, 'bin');
-            yield exec.exec(`ls -alh ${binPath}`);
             yield exec.exec(`chmod -R 755 ${binPath}`);
-            yield exec.exec(`ls -alh ${binPath}`);
             core.debug(`success load artifact directory ${artifactPath}`);
         }
         catch (error) {
