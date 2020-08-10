@@ -10,10 +10,34 @@ inputs:
     description: 'ImageMagick version. See all versions available at http://www.imagemagick.org/download/releases'
     # default: 'default value if applicable'
 
+  release_tag:
+    required: false
+    description: 'Release tag. Release is the precedent'
+
+  artifact_path:
+    required: false
+    description: 'Path of the extracted artifact'
+    # default: 'false'
+
   configure_args:
     required: false
     description: 'Extra arguments to ./configure command'
     default: '--with-gslib=yes'
+
+  compile_fallback:
+    required: false
+    description: 'Skip `make check` after compilation'
+    default: 'false'
+
+  skip_check:
+    required: false
+    description: 'Skip `make check` after compilation'
+    default: 'false'
+
+  skip_cache:
+    required: false
+    description: 'Skip cache from another steps'
+    default: 'false'
 
 runs:
   using: 'node12'

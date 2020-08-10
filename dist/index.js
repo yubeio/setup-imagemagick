@@ -1413,7 +1413,9 @@ const toolCache = __importStar(__webpack_require__(533));
 const exec = __importStar(__webpack_require__(986));
 const os = __importStar(__webpack_require__(87));
 const path = __importStar(__webpack_require__(622));
-const RELEASES_URL = 'http://www.imagemagick.org/download/releases';
+const fs_1 = __webpack_require__(747);
+const SOURCE_RELEASES_URL = 'http://www.imagemagick.org/download/releases';
+const GITHUB_RELEASES_URL = 'https://github.com/gullitmiranda/setup-imagemagick/releases';
 function run() {
     return __awaiter(this, void 0, void 0, function* () {
         checkPlatform();
@@ -1422,26 +1424,59 @@ function run() {
                 required: true
             });
             const configureArgs = core.getInput('configure_args');
-            // debug is only output if you set the secret `ACTIONS_RUNNER_DEBUG` to true
-            core.debug(new Date().toTimeString());
-            // Download and compile imagemagick if not already present
-            let installDir = installedPath(version);
-            core.debug(`installDir: ${installDir}`);
-            if (installDir) {
-                core.debug('imagemagick already installed');
+            const artifactPath = core.getInput('artifact_path');
+            const releaseTag = core.getInput('release_tag');
+            const compileFallback = parseBoolean(core.getInput('compile_fallback'), false);
+            const skipCache = parseBoolean(core.getInput('skip_cache'), false);
+            const artifactName = buildArtifactName(version);
+            let installDir;
+            // check if already instaled by another step
+            if (!skipCache) {
+                installDir = installedPath(version);
+                // debug is only output if you set the secret `ACTIONS_RUNNER_DEBUG` to true
+                core.debug(`installDir (cached for another job): ${installDir}`);
             }
-            core.info(`Install imagemagick v${version}`);
-            core.debug(new Date().toTimeString());
-            yield install(version, configureArgs);
-            core.setOutput('time', new Date().toTimeString());
-            installDir = installedPath(version);
+            if (!installDir && releaseTag) {
+                installDir = yield getFromRelease(releaseTag, version);
+            }
+            if (!installDir && artifactPath) {
+                installDir = yield loadArtifact(artifactPath);
+            }
+            if (!installDir && !compileFallback) {
+                const from = [
+                    releaseTag && 'release_tag',
+                    artifactPath && 'artifact_path'
+                ]
+                    .filter(Boolean)
+                    .join(' or ');
+                throw Error(`Fail to get precompiled file from ${from}, and the compile_fallback option is disabled`);
+            }
+            if (!installDir) {
+                // Download and compile imagemagick if not already present
+                core.info(`Compile imagemagick v${version}`);
+                installDir = yield getAndCompile(version, configureArgs);
+            }
             core.debug(`installDir: ${installDir}`);
             if (!installDir) {
                 throw new Error([
                     `ImageMagick v${version} not found`,
-                    `The list of all available versions can be found in: ${RELEASES_URL}`
+                    `The list of all available versions can be found in: ${SOURCE_RELEASES_URL}`
                 ].join(os.EOL));
             }
+            core.setOutput('artifactName', artifactName);
+            core.setOutput('artifactDir', installDir);
+            yield exec.exec('sudo', ['ldconfig', path.resolve(installDir, 'lib')], {
+                listeners: {
+                    // stdout: (data: Buffer) => {
+                    //   core.info(data.toString().trim())
+                    // },
+                    stderr: (data) => {
+                        core.error(data.toString().trim());
+                    }
+                }
+            });
+            yield toolCache.cacheDir(installDir, 'imagemagick', version);
+            core.addPath(path.join(installDir, 'bin'));
         }
         catch (error) {
             core.setFailed(error.message);
@@ -1451,26 +1486,81 @@ function run() {
 function installedPath(version) {
     return toolCache.find('imagemagick', version);
 }
-function install(version, configureArgs) {
+function buildArtifactName(version) {
+    return `ImageMagick-${version}-${os.arch()}-precompiled`;
+}
+function getFromRelease(releaseTag, version) {
     return __awaiter(this, void 0, void 0, function* () {
-        const sourceDir = `ImageMagick-${version}`;
-        const downloadUrl = `${RELEASES_URL}/${sourceDir}.tar.xz`;
+        const filename = buildArtifactName(version);
+        const downloadUrl = `${GITHUB_RELEASES_URL}/download/${releaseTag}/${filename}.tar.gz`;
+        let installDir;
+        let downloadedFile;
+        try {
+            core.info(`Download from "${downloadUrl}"`);
+            downloadedFile = yield toolCache.downloadTool(downloadUrl);
+        }
+        catch (error) {
+            core.error(`fail to get artifact ${filename} from release ${releaseTag}. See all available releases and versions in ${GITHUB_RELEASES_URL}`);
+            core.debug(error);
+        }
+        if (downloadedFile) {
+            core.startGroup(`Extract downloaded archive`);
+            const extractedFolder = yield toolCache.extractTar(downloadedFile, undefined, 'zx');
+            core.endGroup();
+            core.debug(`Extracted folder ${extractedFolder}`);
+            installDir = path.join(extractedFolder, filename);
+            const binPath = path.join(installDir, 'bin');
+            yield exec.exec(`ls -alh ${binPath}`);
+            yield exec.exec(`chmod -R 755 ${binPath}`);
+            yield exec.exec(`ls -alh ${binPath}`);
+        }
+        return installDir;
+    });
+}
+function loadArtifact(artifactPath) {
+    return __awaiter(this, void 0, void 0, function* () {
+        if (!artifactPath)
+            return undefined;
+        artifactPath = path.resolve(artifactPath);
+        core.debug(`artifactPath: ${artifactPath}`);
+        yield exec.exec('pwd');
+        yield exec.exec('ls -alh');
+        try {
+            yield fs_1.promises.access(artifactPath);
+            const binPath = path.join(artifactPath, 'bin');
+            yield exec.exec(`ls -alh ${binPath}`);
+            yield exec.exec(`chmod -R 755 ${binPath}`);
+            yield exec.exec(`ls -alh ${binPath}`);
+            core.debug(`success load artifact directory ${artifactPath}`);
+        }
+        catch (error) {
+            core.debug(`missing artifact directory ${artifactPath}: ${error}`);
+            artifactPath = undefined;
+        }
+        return artifactPath;
+    });
+}
+function getAndCompile(version, configureArgs) {
+    return __awaiter(this, void 0, void 0, function* () {
+        const filename = `ImageMagick-${version}`;
+        const downloadUrl = `${SOURCE_RELEASES_URL}/${filename}.tar.xz`;
         core.info(`Download from "${downloadUrl}"`);
         const sourcePath = yield toolCache.downloadTool(downloadUrl);
         core.startGroup(`Extract downloaded archive`);
         const sourceExtractedFolder = yield toolCache.extractTar(sourcePath, undefined, 'x');
-        core.debug(`Extracted folder ${sourceExtractedFolder}`);
-        const installRoot = path.join(sourceExtractedFolder, sourceDir);
-        const installDir = yield toolCache.cacheDir(installRoot, 'imagemagick', version);
         core.endGroup();
+        core.debug(`Extracted folder ${sourceExtractedFolder}`);
+        const sourceRoot = path.join(sourceExtractedFolder, filename);
+        const precompiledDir = path.resolve('..', buildArtifactName(version));
         core.info(`Install with configure args "${configureArgs}"`);
-        yield installImageMagick(installDir, configureArgs);
+        yield compileImageMagick(sourceRoot, precompiledDir, configureArgs);
+        return precompiledDir;
     });
 }
-function installImageMagick(installDir, configureArgs) {
+function compileImageMagick(sourceDir, precompiledDir, configureArgs) {
     return __awaiter(this, void 0, void 0, function* () {
         const options = {
-            cwd: installDir,
+            cwd: sourceDir,
             // silent: true,
             listeners: {
                 // stdout: (data: Buffer) => {
@@ -1481,21 +1571,29 @@ function installImageMagick(installDir, configureArgs) {
                 }
             }
         };
-        core.debug(new Date().toTimeString());
         core.startGroup(`./configure ${configureArgs}`);
-        yield exec.exec('sudo', ['./configure', ...configureArgs.split(' ')].filter(Boolean), options);
+        yield exec.exec('sudo', [
+            './configure',
+            `--prefix=${precompiledDir}`,
+            ...configureArgs.split(' ')
+        ].filter(Boolean), options);
         core.endGroup();
-        core.debug(new Date().toTimeString());
         core.startGroup(`make`);
         yield exec.exec('sudo', ['make'], options);
         core.endGroup();
-        core.debug(new Date().toTimeString());
         core.startGroup(`make install`);
         yield exec.exec('sudo', ['make', 'install'], options);
         core.endGroup();
-        core.debug(new Date().toTimeString());
-        yield exec.exec('sudo', ['ldconfig'], options);
+        const skipCheck = parseBoolean(core.getInput('skip_check'), false);
+        if (!skipCheck) {
+            core.startGroup(`make check`);
+            yield exec.exec('sudo', ['make', 'check'], options);
+            core.endGroup();
+        }
     });
+}
+function parseBoolean(input, defaultValue) {
+    return (input || `${defaultValue}`).toLowerCase() === 'true';
 }
 function checkPlatform() {
     if (process.platform !== 'linux')
