@@ -94,8 +94,6 @@
 #             ${artifactName}.tar.gz \
 #             "$(basename "$artifactDir")"
 
-#           ls -alh .
-
 #       - name: Create Release
 #         id: create_release
 #         uses: actions/create-release@v1
