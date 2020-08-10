@@ -31,26 +31,27 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
-      - id: download_artifact
-        name: Download artifact
-        uses: dawidd6/action-download-artifact@v2
-        continue-on-error: true
-        with:
-          # Optional, GitHub token
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          # Required, workflow file name or ID
-          workflow: test.yml
-          # Optional, will use the branch
-          # branch: master
-          # Optional, will get head commit SHA
-          # pr: ${{ github.event.pull_request.number }}
-          # Optional, no need to specify if PR is
-          # commit: ${{ github.event.pull_request.head.sha }}
-          commit: 64db9ad751c66a4ca568cef2e5426e2897d1ab3f
-          # Required, uploaded artifact name
-          name: ImageMagick-${{ env.IMAGEMAGICK_VERSION }}-x64-precompiled
-          # Optional, directory where to extract artifact
-          path: ../ImageMagick-${{ env.IMAGEMAGICK_VERSION }}-x64-precompiled
+      # use artifact when don't need to re-compile
+      # - id: download_artifact
+      #   name: Download artifact
+      #   uses: dawidd6/action-download-artifact@v2
+      #   continue-on-error: true
+      #   with:
+      #     # Optional, GitHub token
+      #     github_token: ${{ secrets.GITHUB_TOKEN }}
+      #     # Required, workflow file name or ID
+      #     workflow: test.yml
+      #     # Optional, will use the branch
+      #     # branch: master
+      #     # Optional, will get head commit SHA
+      #     # pr: ${{ github.event.pull_request.number }}
+      #     # Optional, no need to specify if PR is
+      #     # commit: ${{ github.event.pull_request.head.sha }}
+      #     commit: 64db9ad751c66a4ca568cef2e5426e2897d1ab3f
+      #     # Required, uploaded artifact name
+      #     name: ImageMagick-${{ env.IMAGEMAGICK_VERSION }}-x64-precompiled
+      #     # Optional, directory where to extract artifact
+      #     path: ../ImageMagick-${{ env.IMAGEMAGICK_VERSION }}-x64-precompiled
 
       - id: compiled_source
         uses: ./
@@ -62,8 +63,8 @@ jobs:
           version: ${{ env.IMAGEMAGICK_VERSION }}
           # configure_args: '--with-modules'
           configure_args: '--with-modules --disable-installed'
+          # skip_check: true
           skip_cache: true
-          skip_check: true
           compile_fallback: true
           # artifact_path: ../ImageMagick-${{ env.IMAGEMAGICK_VERSION }}-x64-precompiled
 
@@ -99,7 +100,6 @@ jobs:
       - uses: ./
         with:
           version: ${{ env.IMAGEMAGICK_VERSION }}
-          # artifact_path: ../ImageMagick-${{ env.IMAGEMAGICK_VERSION }}-x64-precompiled
           artifact_path: ${{ steps.download_artifact.outputs.download-path }}
 
       - run: which -a convert
