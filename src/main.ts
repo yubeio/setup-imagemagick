@@ -9,7 +9,7 @@ import {ExecOptions} from '@actions/exec/lib/interfaces'
 
 const SOURCE_RELEASES_URL = 'http://www.imagemagick.org/download/releases'
 const GITHUB_RELEASES_URL =
-  'https://github.com/gullitmiranda/setup-imagemagick/releases'
+  'https://github.com/yubeio/setup-imagemagick/releases'
 
 async function run(): Promise<void> {
   checkPlatform()
@@ -250,7 +250,7 @@ function parseBoolean(input: string, defaultValue: string | boolean): boolean {
 function checkPlatform(): void {
   if (process.platform !== 'linux')
     throw new Error(
-      '@gullitmiranda/setup-imagemagick only supports Ubuntu Linux at this time'
+      '@yubeio/setup-imagemagick only supports Ubuntu Linux at this time'
     )
 }
 
